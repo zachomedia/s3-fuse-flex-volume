@@ -58,3 +58,6 @@ spec:
         - name: install-host-deps-script
           configMap:
             name: fuse-install-deps-script
+      tolerations:
+        - key: dedicated
+          operator: Exists
