@@ -4,7 +4,7 @@ set -o errexit
 set -o pipefail
 
 VENDOR=informaticslab
-declare -a DRIVERS=("pysssix-flex-volume" "goofys-flex-volume")
+declare -a DRIVERS=("goofys-flex-volume")
 
 for DRIVER in "${DRIVERS[@]}"
 do

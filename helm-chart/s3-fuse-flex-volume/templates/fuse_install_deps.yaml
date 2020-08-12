@@ -19,20 +19,11 @@ data:
     }
 
 
-    run_debian() {
+    run_ubuntu() {
         apt-get update
-        apt-get install -y fuse python3-pip git
-        pip3 install git+git://github.com/met-office-lab/pysssix.git@big_cache
-        curl -L -o /usr/bin/goofys http://bit.ly/goofys-latest
-        chmod +x /usr/bin/goofys
-    }
-
-
-    run_amazonLinux() {
-        yum update -y
-        yum install -y fuse-devel fuse-libs fuse python3-pip git
-        pip3 install git+git://github.com/met-office-lab/pysssix.git@big_cache
-        curl -L -o /usr/bin/goofys http://bit.ly/goofys-latest
+        apt-get install -y fuse
+        rm -f /usr/bin/goofys
+        curl -L -o /usr/bin/goofys https://github.com/kahing/goofys/releases/download/v0.24.0/goofys
         chmod +x /usr/bin/goofys
     }
 
@@ -41,12 +32,8 @@ data:
 
     case $distro in
 
-        amzn)
-            run_amazonLinux
-        ;;
-
-        debian)
-            run_debian
+        ubuntu)
+            run_ubuntu
         ;;
 
         *)

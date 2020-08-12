@@ -1,6 +1,7 @@
 image:
-  repository: informaticslab/s3-fuse-flex-volume
+  repository: zachomedia/s3-fuse
   tag: latest
   pullPolicy: Always
 flexVolume:
-  pluginDir: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
+  # pluginDir: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
+  pluginDir: /etc/kubernetes/volumeplugins
