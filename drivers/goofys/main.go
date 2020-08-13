@@ -2,12 +2,17 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path"
 	"strconv"
+	"syscall"
 )
 
 func makeResponse(status, message string) map[string]interface{} {
@@ -36,12 +41,16 @@ func isMountPoint(path string) bool {
 	return true
 }
 
+func pidFilename(target string) string {
+	f256 := sha256.Sum256([]byte(target))
+	return hex.EncodeToString(f256[0:])
+}
+
 /// If goofys hasn't been mounted yet, mount!
 /// If mounted, bind mount to appropriate place.
 func Mount(target string, options map[string]string) interface{} {
-
 	bucket := options["bucket"]
-	subPath := options["subPath"]
+	// subPath := options["subPath"]
 	dirMode, ok := options["dirMode"]
 	if !ok {
 		dirMode = "0755"
@@ -75,7 +84,18 @@ func Mount(target string, options map[string]string) interface{} {
 		args = append(args, "--debug_s3")
 	}
 
-	mountPath := path.Join("/mnt/goofys", bucket)
+	// Write the pid on the filesystem
+	filename := pidFilename(target)
+
+	err := os.MkdirAll(path.Join(os.TempDir(), "goofys"), 0755)
+	if err != nil {
+		log.Println(err)
+	}
+
+	args = append(args, "--pid-file", path.Join(os.TempDir(), "goofys", filename))
+
+	// mountPath := path.Join("/mnt/goofys", bucket)
+	mountPath := target
 
 	args = append(args, bucket, mountPath)
 
@@ -83,14 +103,14 @@ func Mount(target string, options map[string]string) interface{} {
 		exec.Command("umount", mountPath).Run()
 		exec.Command("rm", "-rf", mountPath).Run()
 		os.MkdirAll(mountPath, 0755)
-		
+
 		mountCmd := exec.Command("goofys", args...)
 		mountCmd.Env = os.Environ()
 		if accessKey, ok := options["access-key"]; ok {
-			mountCmd.Env = append(mountCmd.Env, "AWS_ACCESS_KEY_ID=" + accessKey)
+			mountCmd.Env = append(mountCmd.Env, "AWS_ACCESS_KEY_ID="+accessKey)
 		}
 		if secretKey, ok := options["secret-key"]; ok {
-			mountCmd.Env = append(mountCmd.Env, "AWS_SECRET_ACCESS_KEY=" + secretKey)
+			mountCmd.Env = append(mountCmd.Env, "AWS_SECRET_ACCESS_KEY="+secretKey)
 		}
 		var stderr bytes.Buffer
 		mountCmd.Stderr = &stderr
@@ -109,29 +129,61 @@ func Mount(target string, options map[string]string) interface{} {
 		}
 	}
 
-	srcPath := path.Join(mountPath, subPath)
+	// srcPath := path.Join(mountPath, subPath)
 
-	// Create subpath if it does not exist
-	intDirMode, _ := strconv.ParseUint(dirMode, 8, 32)
-	os.MkdirAll(srcPath, os.FileMode(intDirMode))
+	// // Create subpath if it does not exist
+	// intDirMode, _ := strconv.ParseUint(dirMode, 8, 32)
+	// os.MkdirAll(srcPath, os.FileMode(intDirMode))
 
-	// Now we rmdir the target, and then make a symlink to it!
-	err := os.Remove(target)
-	if err != nil {
-		return makeResponse("Failure", err.Error())
-	}
+	// // Now we rmdir the target, and then make a symlink to it!
+	// err := os.Remove(target)
+	// if err != nil {
+	// 	return makeResponse("Failure", err.Error())
+	// }
 
-	err = os.Symlink(srcPath, target)
+	// err = os.Symlink(srcPath, target)
 
 	return makeResponse("Success", "Mount completed!")
 }
 
 func Unmount(target string) interface{} {
-	err := os.Remove(target)
+	pidfile := pidFilename(target)
+	pidstr, err := ioutil.ReadFile(path.Join(os.TempDir(), "goofys", pidfile))
+	if err != nil {
+		return makeResponse("Failure", fmt.Sprintf("could not load pid file for path %s: %v", target, err.Error()))
+	}
+
+	// Terminate the process
+	pid, err := strconv.Atoi(string(pidstr))
 	if err != nil {
 		return makeResponse("Failure", err.Error())
 	}
+
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return makeResponse("Failure", err.Error())
+	}
+	err = proc.Signal(syscall.SIGTERM)
+	if err != nil {
+		return makeResponse("Failure", err.Error())
+	}
+
+	err = os.Remove(target)
+	if err != nil {
+		return makeResponse("Failure", err.Error())
+	}
+
+	// Remove the pid file
+	_ = os.Remove(path.Join(os.TempDir(), "goofys", pidfile))
+
 	return makeResponse("Success", "Successfully unmounted")
+}
+
+func Test(target string) interface{} {
+	return map[string]interface{}{
+		"target":   target,
+		"filename": pidFilename(target),
+	}
 }
 
 func printJSON(data interface{}) {
@@ -153,6 +205,8 @@ func main() {
 		printJSON(Mount(os.Args[2], opts))
 	case "unmount":
 		printJSON(Unmount(os.Args[2]))
+	case "test":
+		printJSON(Test(os.Args[2]))
 	default:
 		printJSON(makeResponse("Not supported", fmt.Sprintf("Operation %s is not supported", action)))
 	}
